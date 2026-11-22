@@ -36,6 +36,9 @@ Phase 0 skeleton (2026-11-22):
 - The layout sits at the repository root rather than in a nested `beam/` folder.
 - The `go` directive in go.mod is the installed toolchain's exact version (`1.27.4`).
 - Placeholder `scripts/run_gates.sh` and `scripts/build_all.sh` exit 1, so a gate run cannot falsely pass before the real scripts exist.
+- `beam` with an unrecognised argument prints the usage to stderr and exits 2. The spec only defines the no-argument case; exiting 0 for an unknown command would hide mistakes.
+- The toolchain was not present in the sandbox; Go 1.27.4 was installed with Homebrew, and go.mod pins `go 1.27.4`, so older toolchains will refuse to build (or try to download 1.27.4 when `GOTOOLCHAIN=auto`).
+- The `internal/*/doc.go` package comments describe each package's intended role; the packages themselves are empty until their features land.
 
 ## Cuts taken
 
