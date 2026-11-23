@@ -2,11 +2,11 @@
 
 ## Current phase
 
-Phase 0: Setup. The repository skeleton is in place (feature: Zero-dependency Go project skeleton), and `scripts/build_all.sh` builds all six release binaries (feature: Six-target build script with checksums). `internal/simnet` starts and stops three fake machines (feature: Simnet fake-machine harness) and fails when one connects directly to another (feature: No-direct-connection socket check).
+Phase 0: Setup. The repository skeleton is in place (feature: Zero-dependency Go project skeleton), and `scripts/build_all.sh` builds all six release binaries (feature: Six-target build script with checksums). `internal/simnet` starts and stops three fake machines (feature: Simnet fake-machine harness) and fails when one connects directly to another (feature: No-direct-connection socket check). `scripts/run_gates.sh 0` runs the phase 0 gate (feature: Per-phase gate runner); the first real phase 0 gate has not been run yet.
 
 ## Time spent
 
-About 0.5 hours (Phase 0 skeleton); about 0.25 hours (six-target build script); about 0.5 hours (simnet harness); about 0.75 hours (no-direct-connection check).
+About 0.5 hours (Phase 0 skeleton); about 0.25 hours (six-target build script); about 0.5 hours (simnet harness); about 0.75 hours (no-direct-connection check); about 0.5 hours (gate runner).
 
 ## Go environment
 
@@ -45,6 +45,11 @@ No-direct-connection check (2026-11-23):
 - `go test -race ./internal/simnet`: ok, 23/23 pass (14 new: parsers, FindDirect, live check, relay stand-in, dial, poller)
 - Acceptance AC-1..AC-3 (`node --test acceptance/no-direct-check/ac-N-*.test.mjs`): 3/3 pass with the aliases in place; simnet-harness 3/3 still pass
 
+Gate runner (2026-11-23):
+
+- `shellcheck scripts/run_gates.sh`: clean
+- Acceptance AC-1..AC-4 (`node --test acceptance/gate-runner/ac-N-*.test.mjs`): 4/4 pass; they run the script only in throwaway clones. In a clone, a full phase 0 gate takes about 30 s; SIGTERM mid-gate exits 143 and leaves no worktree
+
 ## Decisions that differ from the spec
 
 - Module path is `beam`: the spec names none and the repository has no remote.
@@ -58,7 +63,7 @@ No-direct-connection check (2026-11-23):
 - Binaries are built with `-trimpath -ldflags='-s -w'` (stripped symbols and paths) to stay well under the 15 MB target; the script fails if any binary reaches 15,728,640 bytes.
 - `sha256sum` is used when present, otherwise `shasum -a 256` (stock macOS has no `sha256sum`); the script stops before building if neither exists.
 - `scripts/build_all.sh` runs `go build` with `GOTOOLCHAIN=local GOFLAGS=''` so the caller's environment cannot fetch a toolchain or change the release flags, and removes `dist/beam-*` and `dist/checksums.txt` if any step fails, so a failed run leaves no partial release.
-- The placeholder note above no longer applies to `scripts/build_all.sh`; `scripts/run_gates.sh` is still a placeholder.
+- The placeholder note above no longer applies: both `scripts/build_all.sh` and `scripts/run_gates.sh` are real.
 - Simnet on macOS needs loopback aliases for 127.0.0.2-.4, added once by the person with `sudo ifconfig lo0 alias 127.0.0.N up` and again after every reboot (Linux binds all of 127.0.0.0/8). `Harness.Start` and `Harness.Preflight` try to bind each address first and fail with that command; the harness never runs sudo or ifconfig.
 - Simnet layout: `<dir>/<name>/home` is the machine's HOME and `<dir>/<name>/machine.log` collects its stdout and stderr (appended). The child gets `HOME`, `XDG_CONFIG_HOME=<home>/.config`, `USERPROFILE=<home>`, `APPDATA=<home>/AppData/Roaming`, `LOCALAPPDATA=<home>/AppData/Local`, `BEAM_SIMNET_NAME` and `BEAM_SIMNET_ADDR`. At most three machines, named `[A-Za-z0-9-]+`, get 127.0.0.2, .3, .4 in start order.
 - Until beam has a long-running command, each machine runs a stub (`simnet.MaybeRunStub`, re-executing the current binary with `BEAM_SIMNET_STUB=1`). It listens on its address with a free port, prints `simnet: ready <addr:port> name=… pid=… home=…`, answers each connection with one JSON line `{"name","pid","home"}`, and exits 0 on SIGTERM. `Config.Command` runs another program instead.
@@ -70,6 +75,10 @@ No-direct-connection check (2026-11-23):
 - The poller runs every 200 ms (`Config.Poll`; negative turns it off) and `StopAll` scans once more before stopping, which adds about 0.2 s per `StopAll` on macOS. A connection that opens and closes between two scans is not caught.
 - Stub dial command: the harness writes `dial host:port` to the stub's stdin; the stub dials from its own address, holds the connection until it exits and answers `simnet: dialed …` or `simnet: dial failed …` on stdout, which `Machine.Dial` waits for (10 s limit).
 - Driver flags `--relay` (prints `{"relay":"127.0.0.1:P"}` before the machine lines) and `--dial FROM=TO,…` (TO a machine or `relay`). With either flag it prints `{"check":{"ok":…,"direct":[{"from","to","local","remote"}]}}` after the dials and exits 3 if any direct connection was seen during the run. A bad `--dial` exits 2 before anything starts. Without the flags, output and exit codes are unchanged.
+- Gates: `scripts/run_gates.sh <phase 0-7>`. Exit 0 = gate passed and marked; 1 = a check failed (no commit); 2 = usage error, missing tool (git, go, node, bash), missing previous gate, or phase without a gate yet. Phase N ≥ 1 needs a commit whose subject is exactly `Gate: Phase <N-1> passed` (exact match, because other commits mention "Phase 3" etc.).
+- A gate runs in a temporary `git worktree` of HEAD, so only committed files count and the working tree (including untracked locked-test copies) is never touched; an EXIT trap removes it, also on Ctrl-C or SIGTERM.
+- On pass the script makes one empty commit `Gate: Phase <N> passed` (body: `Validated <sha>.`) on the current branch, only if HEAD did not move during the run. It never pushes.
+- Phase 0 gate: `bash scripts/build_all.sh`, then every committed `*.test.mjs` under acceptance/go-project-skeleton, six-target-build-script, simnet-harness and no-direct-check, one file per `node --test`, in C-locale order; the first failure stops it. The gate runner's own tests are not part of it. It needs the 127.0.0.2-.4 aliases. Phases 1-7 exit 2 with "gate for phase N is not defined yet" until their features add a section.
 
 ## Cuts taken
 
