@@ -21,6 +21,7 @@ Branch `feature/no-direct-check`, worktree `../no-direct-check-work`, from main 
 - `bash scripts/build_all.sh`: exit 0.
 - Acceptance, one file per `node --test`: 19/19 pass (no-direct-check 3, simnet-harness 3, go-project-skeleton 10, six-target-build-script 3).
 - Bad `--dial` values (`A=relay` without `--relay`, unknown FROM or TO, missing `=`) exit 2 before any machine starts.
+- Main checkout (`/Users/mannyhenri/code/beam`, local `main` fast-forwarded to 4e9247c, no merge commit): `go vet ./...` clean, `go test -race ./internal/simnet` ok, acceptance 19/19 pass. Not pushed.
 
 ## Deviations
 
