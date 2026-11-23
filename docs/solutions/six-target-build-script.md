@@ -34,6 +34,7 @@ Beam's definition of done needs "six binaries with checksums built from the fina
 - `GOFLAGS=` as an env prefix triggers shellcheck SC1007; write `GOFLAGS=''`.
 - Checking `${PIPESTATUS[0]}` from the agent's shell returned nothing because that shell is zsh; run the command without a pipe and read `$?`.
 - The Phase 4 workflow had no "Open PR" step, so the stage ended with the branch unpushed even though its focus asked for a PR.
+- NeonCore runs the locked tests in the main checkout (`/Users/mannyhenri/code/beam`), not in the `../<slug>-work` worktree. Every stage passed 3/3 on the branch, yet the goal check reported 0/3 because `main` still held the placeholder script. A retest stage closed the gap by fast-forwarding local `main` to the branch.
 
 ## Prevention
 
@@ -41,6 +42,7 @@ Beam's definition of done needs "six binaries with checksums built from the fina
 - Check required tools before doing expensive work.
 - Tests that share an output directory (`dist/`) must run one file at a time; NeonCore does, but `node --test` with several files runs them in parallel.
 - When planning a pipeline, check that the chosen workflow actually contains the step the focus asks for (here: opening the PR).
+- Before reporting a stage done, run the locked tests in the main checkout too, not only in the worktree; a pass in the worktree proves nothing about what NeonCore will see.
 - Error paths of the script are still only checked by hand; a future gate-runner feature could add them as tests.
 
 ## Related Docs
