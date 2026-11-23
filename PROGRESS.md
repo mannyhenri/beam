@@ -2,11 +2,11 @@
 
 ## Current phase
 
-Phase 0: Setup. The repository skeleton is in place (feature: Zero-dependency Go project skeleton), and `scripts/build_all.sh` builds all six release binaries (feature: Six-target build script with checksums). `internal/simnet` starts and stops three fake machines (feature: Simnet fake-machine harness).
+Phase 0: Setup. The repository skeleton is in place (feature: Zero-dependency Go project skeleton), and `scripts/build_all.sh` builds all six release binaries (feature: Six-target build script with checksums). `internal/simnet` starts and stops three fake machines (feature: Simnet fake-machine harness) and fails when one connects directly to another (feature: No-direct-connection socket check).
 
 ## Time spent
 
-About 0.5 hours (Phase 0 skeleton); about 0.25 hours (six-target build script); about 0.5 hours (simnet harness).
+About 0.5 hours (Phase 0 skeleton); about 0.25 hours (six-target build script); about 0.5 hours (simnet harness); about 0.75 hours (no-direct-connection check).
 
 ## Go environment
 
@@ -40,6 +40,11 @@ Simnet harness (2026-11-23):
 - `go test -race ./internal/simnet`: ok, 9/9 pass with the 127.0.0.2-.4 aliases in place (without them the address-order test skips with the sudo fix)
 - Acceptance AC-1..AC-3 (`node --test acceptance/simnet-harness/ac-N-*.test.mjs`): 3/3 pass once the aliases are added. Without them AC-1 and AC-2 fail with the harness's own `sudo ifconfig lo0 alias 127.0.0.N up` message
 
+No-direct-connection check (2026-11-23):
+
+- `go test -race ./internal/simnet`: ok, 23/23 pass (14 new: parsers, FindDirect, live check, relay stand-in, dial, poller)
+- Acceptance AC-1..AC-3 (`node --test acceptance/no-direct-check/ac-N-*.test.mjs`): 3/3 pass with the aliases in place; simnet-harness 3/3 still pass
+
 ## Decisions that differ from the spec
 
 - Module path is `beam`: the spec names none and the repository has no remote.
@@ -60,6 +65,11 @@ Simnet harness (2026-11-23):
 - Stopping sends SIGTERM, waits up to 5 s per machine, then kills; a machine counts as clean only if it exited 0 without the kill. On Windows there is no SIGTERM, so machines are killed and reported as not clean; the harness compiles there but its tests run on macOS and Linux only.
 - Test driver `go run ./internal/simnet/cmd/simnet --dir <D> --names A,B,C [--addrs …]` (not part of the release build): prints one line per machine `{"name","pid","addr","home","log"}` where `addr` is `ip:port`, waits for stdin to close or SIGTERM/interrupt, stops all, prints `{"stopped":[{"name","pid","clean"}]}` and exits 0 only if all were clean. It exits 1 before starting anything if an address cannot be bound, and 2 on missing flags.
 - The driver adds a 13th package, `beam/internal/simnet/cmd/simnet`. The person unlocked go-project-skeleton AC-4 (2026-11-23) to add it to the expected `go list ./...` set, which was exactly 12 packages before; the locked simnet driver builds that path, so the two locked tests could not both pass otherwise.
+- No-direct check: a violation is any TCP socket owned by a machine's process (not its children) whose remote IP is another machine's address, on any port and in any state but LISTEN (SYN_SENT and CLOSE_WAIT count). A machine's connection to itself, the relay, and sockets of other processes (such as the test reading a stub) are not violations.
+- Socket listing: macOS runs `/usr/sbin/lsof -nP -a -p <all machine pids> -iTCP -FpTn` once per check (about 0.1-0.2 s); Linux reads `/proc/net/tcp` and `/proc/net/tcp6` and matches inodes from `/proc/<pid>/fd`; other systems return "not supported". The first `Start` fails if lsof (macOS) or `/proc/net/tcp` (Linux) is missing.
+- The poller runs every 200 ms (`Config.Poll`; negative turns it off) and `StopAll` scans once more before stopping, which adds about 0.2 s per `StopAll` on macOS. A connection that opens and closes between two scans is not caught.
+- Stub dial command: the harness writes `dial host:port` to the stub's stdin; the stub dials from its own address, holds the connection until it exits and answers `simnet: dialed …` or `simnet: dial failed …` on stdout, which `Machine.Dial` waits for (10 s limit).
+- Driver flags `--relay` (prints `{"relay":"127.0.0.1:P"}` before the machine lines) and `--dial FROM=TO,…` (TO a machine or `relay`). With either flag it prints `{"check":{"ok":…,"direct":[{"from","to","local","remote"}]}}` after the dials and exits 3 if any direct connection was seen during the run. A bad `--dial` exits 2 before anything starts. Without the flags, output and exit codes are unchanged.
 
 ## Cuts taken
 
