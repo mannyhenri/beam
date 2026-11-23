@@ -47,6 +47,7 @@ Six-target build script (2026-11-23):
 - `scripts/build_all.sh` writes to `dist/` at the repository root (git-ignored): `beam-<goos>-<goarch>` for linux and darwin, `beam-<goos>-<goarch>.exe` for windows, on amd64 and arm64, plus `dist/checksums.txt` in `sha256sum` format with bare filenames sorted by name. The spec names no output location or file names.
 - Binaries are built with `-trimpath -ldflags='-s -w'` (stripped symbols and paths) to stay well under the 15 MB target; the script fails if any binary reaches 15,728,640 bytes.
 - `sha256sum` is used when present, otherwise `shasum -a 256` (stock macOS has no `sha256sum`); the script stops before building if neither exists.
+- `scripts/build_all.sh` runs `go build` with `GOTOOLCHAIN=local GOFLAGS=''` so the caller's environment cannot fetch a toolchain or change the release flags, and removes `dist/beam-*` and `dist/checksums.txt` if any step fails, so a failed run leaves no partial release.
 - The placeholder note above no longer applies to `scripts/build_all.sh`; `scripts/run_gates.sh` is still a placeholder.
 
 ## Cuts taken

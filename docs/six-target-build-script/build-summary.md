@@ -26,4 +26,4 @@ Branch `feature/six-target-build-script`, worktree `../six-target-build-script-w
 
 ## For review
 
-Points worth a look: `export LC_ALL=C` makes the `beam-*` glob sort by byte; `$(($(wc -c <file)))` strips BSD `wc` padding; when the size check fails it leaves the binaries built so far in dist/ and writes no checksums.txt.
+Points worth a look: `export LC_ALL=C` makes the `beam-*` glob sort by byte; `$(($(wc -c <file)))` strips BSD `wc` padding; a failed run now clears dist/ through an EXIT trap (added in review; see review.md).

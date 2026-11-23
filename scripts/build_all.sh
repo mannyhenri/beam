@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Cross-compiles beam for six targets into dist/ and writes dist/checksums.txt.
+# Run one at a time: each run clears and rewrites dist/.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,6 +17,8 @@ fi
 
 mkdir -p "$dist"
 rm -f "$dist"/beam-* "$dist/checksums.txt"
+# A failed run leaves no partial release behind.
+trap '[ $? -eq 0 ] || rm -f "$dist"/beam-* "$dist/checksums.txt"' EXIT
 
 max_bytes=$((15 * 1024 * 1024))
 targets=(linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64)
@@ -29,7 +32,7 @@ for target in "${targets[@]}"; do
     out="$out.exe"
   fi
   echo "building $(basename "$out")"
-  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+  GOTOOLCHAIN=local GOFLAGS='' CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
     go build -trimpath -ldflags='-s -w' -o "$out" ./cmd/beam
 
   size=$(($(wc -c <"$out")))
