@@ -245,7 +245,8 @@ func copyStdout(r io.ReadCloser, log io.WriteCloser, ready chan<- string, done c
 		line := sc.Text()
 		io.WriteString(log, line+"\n")
 		if rest, ok := strings.CutPrefix(line, readyPrefix); ok && ready != nil {
-			ready <- strings.Fields(rest + " ")[0]
+			addr, _, _ := strings.Cut(rest, " ")
+			ready <- addr
 			ready = nil
 		}
 	}
