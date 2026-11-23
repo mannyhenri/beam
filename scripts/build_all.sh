@@ -5,6 +5,15 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dist="$root/dist"
 
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256=(sha256sum)
+elif command -v shasum >/dev/null 2>&1; then
+  sha256=(shasum -a 256)
+else
+  echo "build_all.sh: need sha256sum or shasum to write checksums.txt" >&2
+  exit 1
+fi
+
 mkdir -p "$dist"
 rm -f "$dist"/beam-* "$dist/checksums.txt"
 
@@ -29,3 +38,9 @@ for target in "${targets[@]}"; do
     exit 1
   fi
 done
+
+cd "$dist"
+export LC_ALL=C
+binaries=(beam-*)
+"${sha256[@]}" "${binaries[@]}" >checksums.txt
+echo "wrote dist/checksums.txt"
