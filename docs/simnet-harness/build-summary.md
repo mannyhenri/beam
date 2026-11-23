@@ -16,16 +16,12 @@ Branch `feature/simnet-harness`, worktree `../simnet-harness-work`. The scope br
 ## Verification (worktree, `GOTOOLCHAIN=local GOFLAGS=''`)
 
 - `go vet ./...`: clean. `GOOS=linux go vet ./internal/simnet/...`: clean. `CGO_ENABLED=0 GOOS=windows go build ./internal/simnet/...`: ok.
-- `go test -race ./internal/simnet -count=1`: ok (8 pass, 1 skip: `TestStartAssignsAddressesInOrder` needs the 127.0.0.2-.4 aliases).
+- `go test -race ./internal/simnet -count=1`: ok, 9/9 pass (with the aliases; without them `TestStartAssignsAddressesInOrder` skips with the sudo fix).
 - `bash scripts/build_all.sh`: exit 0.
 - Skeleton acceptance tests: 10/10 pass. Six-target build script acceptance tests: 3/3 pass.
-- Locked simnet tests, one file per `node --test`: AC-3 pass. AC-1 and AC-2 fail on this Mac with the harness's own message, `cannot bind loopback address 127.0.0.2 … sudo ifconfig lo0 alias 127.0.0.2 up`, because lo0 has only 127.0.0.1. This is the precondition the person adds with sudo.
-- Main checkout: not yet fast-forwarded, because AC-1 and AC-2 are not green.
+- Locked simnet tests, one file per `node --test`: 3/3 pass after the person added the 127.0.0.2-.4 aliases. Before that, AC-1 and AC-2 failed only with the harness's own message, `cannot bind loopback address 127.0.0.N … sudo ifconfig lo0 alias 127.0.0.N up`.
+- Main checkout: local `main` fast-forwarded to this branch; locked tests rerun there (see below).
 
 ## Deviations
 
 - Skeleton AC-4 changed (by the person): the locked simnet driver builds `./internal/simnet/cmd/simnet`, a 13th package, so the old set of exactly 12 could never pass alongside it.
-
-## Still to do once the aliases exist
-
-Rerun the locked tests in the worktree, fast-forward local `main` (CLAUDE.md caveat: untracked locked-test copies in the main checkout), rerun them in `/Users/mannyhenri/code/beam`, then remove the worktree and delete the branch.

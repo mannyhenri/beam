@@ -37,8 +37,8 @@ Six-target build script (2026-11-23):
 
 Simnet harness (2026-11-23):
 
-- `go test -race ./internal/simnet`: ok (8 pass, 1 skipped: address order needs the 127.0.0.2-.4 aliases)
-- Acceptance AC-3 (missing alias error): pass. AC-1 and AC-2: fail on this Mac until the loopback aliases are added; the failure is the harness's own message with the `sudo ifconfig lo0 alias 127.0.0.2 up` fix
+- `go test -race ./internal/simnet`: ok, 9/9 pass with the 127.0.0.2-.4 aliases in place (without them the address-order test skips with the sudo fix)
+- Acceptance AC-1..AC-3 (`node --test acceptance/simnet-harness/ac-N-*.test.mjs`): 3/3 pass once the aliases are added. Without them AC-1 and AC-2 fail with the harness's own `sudo ifconfig lo0 alias 127.0.0.N up` message
 
 ## Decisions that differ from the spec
 
