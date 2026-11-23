@@ -2,11 +2,13 @@
 
 ## Current phase
 
+Phase 1: Transport and relay. The phase 0 gate passed (`Gate: Phase 0 passed`, 6b8c0fa). `internal/ws` upgrades WebSocket requests on the server side (feature: WebSocket server).
+
 Phase 0: Setup. The repository skeleton is in place (feature: Zero-dependency Go project skeleton), and `scripts/build_all.sh` builds all six release binaries (feature: Six-target build script with checksums). `internal/simnet` starts and stops three fake machines (feature: Simnet fake-machine harness) and fails when one connects directly to another (feature: No-direct-connection socket check). `scripts/run_gates.sh 0` runs the phase 0 gate (feature: Per-phase gate runner); the first real phase 0 gate has not been run yet.
 
 ## Time spent
 
-About 0.5 hours (Phase 0 skeleton); about 0.25 hours (six-target build script); about 0.5 hours (simnet harness); about 0.75 hours (no-direct-connection check); about 0.5 hours (gate runner).
+About 0.5 hours (Phase 0 skeleton); about 0.25 hours (six-target build script); about 0.5 hours (simnet harness); about 0.75 hours (no-direct-connection check); about 0.5 hours (gate runner); about 0.25 hours (WebSocket server).
 
 ## Go environment
 
@@ -50,6 +52,11 @@ Gate runner (2026-11-23):
 - `shellcheck scripts/run_gates.sh`: clean
 - Acceptance AC-1..AC-4 (`node --test acceptance/gate-runner/ac-N-*.test.mjs`): 4/4 pass; they run the script only in throwaway clones. In a clone, a full phase 0 gate takes about 30 s; SIGTERM mid-gate exits 143 and leaves no worktree
 
+WebSocket server (2026-11-23):
+
+- `go test -race ./internal/ws`: ok (accept key, 13 refusal cases, 4 handover variants, close)
+- Acceptance AC-1, AC-2 (`node --test acceptance/ws-server/ac-N-*.test.mjs`): 2/2 pass
+
 ## Decisions that differ from the spec
 
 - Module path is `beam`: the spec names none and the repository has no remote.
@@ -79,6 +86,9 @@ Gate runner (2026-11-23):
 - A gate runs in a temporary `git worktree` of HEAD, so only committed files count and the working tree (including untracked locked-test copies) is never touched; an EXIT trap removes it, also on Ctrl-C or SIGTERM.
 - On pass the script makes one empty commit `Gate: Phase <N> passed` (body: `Validated <sha>.`) on the current branch, only if HEAD did not move during the run. It never pushes.
 - Phase 0 gate: `bash scripts/build_all.sh`, then every committed `*.test.mjs` under acceptance/go-project-skeleton, six-target-build-script, simnet-harness and no-direct-check, one file per `node --test`, in C-locale order; the first failure stops it. The gate runner's own tests are not part of it. It needs the 127.0.0.2-.4 aliases. Phases 1-7 exit 2 with "gate for phase N is not defined yet" until their features add a section.
+
+- `ws.Upgrade(w, r) (*ws.Conn, error)` checks, in order: method GET (else 405 with `Allow: GET`); token `websocket` in Upgrade and `Upgrade` in Connection, comma lists, any case (else 400); `Sec-WebSocket-Version: 13` (else 426 with `Sec-WebSocket-Version: 13`, also when missing); `Sec-WebSocket-Key` base64 of exactly 16 bytes (else 400); a writer without `http.Hijacker` gets 500. Refusals go through the ResponseWriter and nothing is hijacked. On success it writes the 101 (Upgrade, Connection, Sec-WebSocket-Accept only) on the hijacked connection.
+- `*ws.Conn` is an `io.ReadWriteCloser` over the hijacked connection; reads go through net/http's buffered reader so bytes sent with the request are kept; `NetConn()` exposes the `net.Conn`. The caller closes it. No origin check, subprotocols or extensions; frames are the framing feature's job.
 
 ## Cuts taken
 
