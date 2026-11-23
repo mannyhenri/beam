@@ -59,6 +59,7 @@ Simnet harness (2026-11-23):
 - Until beam has a long-running command, each machine runs a stub (`simnet.MaybeRunStub`, re-executing the current binary with `BEAM_SIMNET_STUB=1`). It listens on its address with a free port, prints `simnet: ready <addr:port> name=… pid=… home=…`, answers each connection with one JSON line `{"name","pid","home"}`, and exits 0 on SIGTERM. `Config.Command` runs another program instead.
 - Stopping sends SIGTERM, waits up to 5 s per machine, then kills; a machine counts as clean only if it exited 0 without the kill. On Windows there is no SIGTERM, so machines are killed and reported as not clean; the harness compiles there but its tests run on macOS and Linux only.
 - Test driver `go run ./internal/simnet/cmd/simnet --dir <D> --names A,B,C [--addrs …]` (not part of the release build): prints one line per machine `{"name","pid","addr","home","log"}` where `addr` is `ip:port`, waits for stdin to close or SIGTERM/interrupt, stops all, prints `{"stopped":[{"name","pid","clean"}]}` and exits 0 only if all were clean. It exits 1 before starting anything if an address cannot be bound, and 2 on missing flags.
+- The driver adds a 13th package, `beam/internal/simnet/cmd/simnet`. The person unlocked go-project-skeleton AC-4 (2026-11-23) to add it to the expected `go list ./...` set, which was exactly 12 packages before; the locked simnet driver builds that path, so the two locked tests could not both pass otherwise.
 
 ## Cuts taken
 
