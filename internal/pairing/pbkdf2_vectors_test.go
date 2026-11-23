@@ -49,19 +49,21 @@ var pbkdf2Vectors = []pbkdf2Vector{
 // vectors in RFC 7914 section 11, byte for byte.
 func TestPBKDF2SHA256Vectors(t *testing.T) {
 	for _, v := range pbkdf2Vectors {
-		want, err := hex.DecodeString(strings.ReplaceAll(v.dk, " ", ""))
-		if err != nil {
-			t.Fatalf("P=%q c=%d: bad hex: %v", v.password, v.iterations, err)
-		}
-		if len(want) != v.dkLen {
-			t.Fatalf("P=%q c=%d: DK is %d octets, dkLen = %d", v.password, v.iterations, len(want), v.dkLen)
-		}
-		dk, err := pbkdf2.Key(sha256.New, v.password, []byte(v.salt), v.iterations, v.dkLen)
-		if err != nil {
-			t.Fatalf("P=%q c=%d: pbkdf2.Key: %v", v.password, v.iterations, err)
-		}
-		if !bytes.Equal(dk, want) {
-			t.Errorf("P=%q S=%q c=%d: DK = %x, want %x", v.password, v.salt, v.iterations, dk, want)
-		}
+		t.Run(v.password, func(t *testing.T) {
+			want, err := hex.DecodeString(strings.ReplaceAll(v.dk, " ", ""))
+			if err != nil {
+				t.Fatalf("bad hex: %v", err)
+			}
+			if len(want) != v.dkLen {
+				t.Fatalf("DK is %d octets, dkLen = %d", len(want), v.dkLen)
+			}
+			dk, err := pbkdf2.Key(sha256.New, v.password, []byte(v.salt), v.iterations, v.dkLen)
+			if err != nil {
+				t.Fatalf("pbkdf2.Key: %v", err)
+			}
+			if !bytes.Equal(dk, want) {
+				t.Errorf("S=%q c=%d: DK = %x, want %x", v.salt, v.iterations, dk, want)
+			}
+		})
 	}
 }
