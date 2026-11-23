@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,10 @@ const (
 	defaultStopTimeout = 5 * time.Second
 	readyTimeout       = 10 * time.Second
 	readyPrefix        = "simnet: ready "
+	dialedPrefix       = "simnet: dialed "
+	dialFailedPrefix   = "simnet: dial failed "
+	dialTimeout        = 10 * time.Second
+	defaultPoll        = 200 * time.Millisecond
 )
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
@@ -33,6 +38,7 @@ type Config struct {
 	Addrs       []string      // addresses in start order; DefaultAddrs if empty
 	Command     []string      // program and arguments; the stub machine from os.Executable if empty
 	StopTimeout time.Duration // how long StopAll waits per machine; 5 s if zero
+	Poll        time.Duration // how often the no-direct check runs while machines run; 200 ms if zero, off if negative
 }
 
 // Harness starts and stops fake machines.
@@ -40,6 +46,10 @@ type Harness struct {
 	cfg      Config
 	mu       sync.Mutex
 	machines []*Machine
+
+	seen     []Direct // every direct connection found while machines ran
+	pollStop chan struct{}
+	pollDone chan struct{}
 }
 
 // Machine is one running fake machine.
@@ -54,6 +64,10 @@ type Machine struct {
 	cmd  *exec.Cmd
 	done chan struct{}
 	err  error
+
+	in      io.WriteCloser // stub's stdin, for dial commands
+	replies chan string    // stub's answers to dial commands
+	dialMu  sync.Mutex
 }
 
 // StopResult reports how one machine stopped.
@@ -79,6 +93,9 @@ func New(cfg Config) (*Harness, error) {
 	cfg.Addrs = append([]string(nil), cfg.Addrs...)
 	if cfg.StopTimeout == 0 {
 		cfg.StopTimeout = defaultStopTimeout
+	}
+	if cfg.Poll == 0 {
+		cfg.Poll = defaultPoll
 	}
 	return &Harness{cfg: cfg}, nil
 }
@@ -136,12 +153,21 @@ func (h *Harness) Start(name string) (*Machine, error) {
 	if err := checkAddr(addr); err != nil {
 		return nil, err
 	}
+	if len(h.machines) == 0 {
+		if err := socketToolReady(); err != nil {
+			return nil, err
+		}
+	}
 
 	m, err := h.start(name, addr)
 	if err != nil {
 		return nil, err
 	}
 	h.machines = append(h.machines, m)
+	if h.pollStop == nil && h.cfg.Poll > 0 {
+		h.pollStop, h.pollDone = make(chan struct{}), make(chan struct{})
+		go h.poll(h.pollStop, h.pollDone)
+	}
 	return m, nil
 }
 
@@ -187,6 +213,11 @@ func (h *Harness) start(name, addr string) (*Machine, error) {
 		defer pw.Close()
 		cmd.Stdout = pw
 		ready = make(chan string, 1)
+		m.replies = make(chan string, 1)
+		if m.in, err = cmd.StdinPipe(); err != nil {
+			pr.Close()
+			return nil, fmt.Errorf("simnet: %w", err)
+		}
 	} else {
 		cmd.Stdout = logf
 	}
@@ -209,7 +240,7 @@ func (h *Harness) start(name, addr string) (*Machine, error) {
 			cmd.Wait()
 			return nil, fmt.Errorf("simnet: %w", err)
 		}
-		go copyStdout(pr, logCopy, ready, copied)
+		go copyStdout(pr, logCopy, ready, m.replies, copied)
 	} else {
 		close(copied)
 	}
@@ -234,9 +265,9 @@ func (h *Harness) start(name, addr string) (*Machine, error) {
 	}
 }
 
-// copyStdout appends the child's stdout to its log and reports the ready line's
-// address once it has been written to the log.
-func copyStdout(r io.ReadCloser, log io.WriteCloser, ready chan<- string, done chan<- struct{}) {
+// copyStdout appends the child's stdout to its log, reports the ready line's
+// address once it has been written to the log, and passes on dial answers.
+func copyStdout(r io.ReadCloser, log io.WriteCloser, ready, replies chan<- string, done chan<- struct{}) {
 	defer close(done)
 	defer log.Close()
 	defer r.Close()
@@ -248,6 +279,12 @@ func copyStdout(r io.ReadCloser, log io.WriteCloser, ready chan<- string, done c
 			addr, _, _ := strings.Cut(rest, " ")
 			ready <- addr
 			ready = nil
+		}
+		if strings.HasPrefix(line, dialedPrefix) || strings.HasPrefix(line, dialFailedPrefix) {
+			select {
+			case replies <- line:
+			default: // nobody is waiting for it
+			}
 		}
 	}
 }
@@ -289,6 +326,16 @@ func (m *Machine) Wait() error {
 // StopAll stops every running machine and reports each in start order.
 func (h *Harness) StopAll() []StopResult {
 	h.mu.Lock()
+	stop, done := h.pollStop, h.pollDone
+	h.pollStop, h.pollDone = nil, nil
+	h.mu.Unlock()
+	if stop != nil {
+		close(stop)
+		<-done
+		h.scan() // record what is still connected at the moment of stopping
+	}
+
+	h.mu.Lock()
 	ms := h.machines
 	h.machines = nil
 	h.mu.Unlock()
@@ -309,4 +356,92 @@ func (h *Harness) StopAll() []StopResult {
 		res = append(res, StopResult{Name: m.Name, Pid: m.Pid, Clean: clean && m.err == nil})
 	}
 	return res
+}
+
+// Dial tells a stub machine to open a TCP connection to addr from its own
+// address and hold it until the machine stops. It returns once the stub has
+// connected, or with the stub's error.
+func (m *Machine) Dial(addr string) error {
+	if m.in == nil {
+		return fmt.Errorf("simnet: machine %s runs a custom command; only the stub machine can dial", m.Name)
+	}
+	m.dialMu.Lock()
+	defer m.dialMu.Unlock()
+	if _, err := fmt.Fprintf(m.in, "dial %s\n", addr); err != nil {
+		return fmt.Errorf("simnet: machine %s: %w", m.Name, err)
+	}
+	select {
+	case r := <-m.replies:
+		if strings.HasPrefix(r, dialedPrefix) {
+			return nil
+		}
+		return fmt.Errorf("simnet: machine %s: %s", m.Name, strings.TrimPrefix(r, "simnet: "))
+	case <-m.done:
+		return fmt.Errorf("simnet: machine %s exited while dialing %s; see %s", m.Name, addr, m.Log)
+	case <-time.After(dialTimeout):
+		return fmt.Errorf("simnet: machine %s did not answer a dial to %s within %s", m.Name, addr, dialTimeout)
+	}
+}
+
+// CheckNoDirect lists the running machines' TCP sockets and returns a
+// *DirectError naming every connection from one machine to another machine's
+// address. Connections to the relay or anywhere else are fine.
+func (h *Harness) CheckNoDirect() error {
+	direct, err := h.scan()
+	if err != nil {
+		return err
+	}
+	if len(direct) > 0 {
+		return &DirectError{Direct: direct}
+	}
+	return nil
+}
+
+// Seen returns every direct connection found by CheckNoDirect or the poller
+// since the harness was created, including those of machines since stopped.
+func (h *Harness) Seen() []Direct {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]Direct(nil), h.seen...)
+}
+
+// scan lists the running machines' sockets once and records direct connections.
+func (h *Harness) scan() ([]Direct, error) {
+	ms := h.Machines()
+	if len(ms) == 0 {
+		return nil, nil
+	}
+	pids := make([]int, len(ms))
+	for i, m := range ms {
+		pids[i] = m.Pid
+	}
+	socks, err := listSockets(pids)
+	if err != nil {
+		return nil, err
+	}
+	direct := FindDirect(ms, socks)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, d := range direct {
+		if !slices.Contains(h.seen, d) {
+			h.seen = append(h.seen, d)
+		}
+	}
+	return direct, nil
+}
+
+// poll runs scan every Config.Poll until stop is closed. A connection that
+// opens and closes between two polls is not seen.
+func (h *Harness) poll(stop <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
+	t := time.NewTicker(h.cfg.Poll)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+			h.scan()
+		}
+	}
 }
