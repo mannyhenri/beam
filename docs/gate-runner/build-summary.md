@@ -14,6 +14,7 @@ Branch `feature/gate-runner`, worktree `../gate-runner-work`, from main 8ea8ba8.
 - Acceptance, one file per `node --test`: 23/23 pass (gate-runner 4, no-direct-check 3, simnet-harness 3, go-project-skeleton 10, six-target-build-script 3). The gate-runner tests run the script only in throwaway clones.
 - By hand in a throwaway clone: SIGTERM mid-gate → exit 143, `git worktree list` back to one entry, no marker commit.
 - `run_gates.sh` was never run against this repo or the feature worktree.
+- Main checkout (`/Users/mannyhenri/code/beam`, local `main` fast-forwarded to ace3e1b, no merge commit): shellcheck clean, acceptance 23/23 pass, and `git log` has no `Gate: Phase` commit (the tests committed only in their clones). Not pushed.
 
 ## Deviations
 
