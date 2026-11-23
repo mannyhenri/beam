@@ -20,7 +20,7 @@ Branch `feature/simnet-harness`, worktree `../simnet-harness-work`. The scope br
 - `bash scripts/build_all.sh`: exit 0.
 - Skeleton acceptance tests: 10/10 pass. Six-target build script acceptance tests: 3/3 pass.
 - Locked simnet tests, one file per `node --test`: 3/3 pass after the person added the 127.0.0.2-.4 aliases. Before that, AC-1 and AC-2 failed only with the harness's own message, `cannot bind loopback address 127.0.0.N … sudo ifconfig lo0 alias 127.0.0.N up`.
-- Main checkout: local `main` fast-forwarded to this branch; locked tests rerun there (see below).
+- Main checkout (`/Users/mannyhenri/code/beam`, local `main` fast-forwarded to the branch, no merge commit): `go vet ./...` clean, `go test -race ./internal/simnet` ok, acceptance 16/16 pass (simnet 3/3, skeleton 10/10, six-target build script 3/3), one file per `node --test`. Not pushed.
 
 ## Deviations
 
