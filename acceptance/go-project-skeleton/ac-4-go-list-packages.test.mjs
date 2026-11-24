@@ -1,4 +1,5 @@
-// AC-4: `go list ./...` lists cmd/beam and all eleven internal packages.
+// AC-4: `go list ./...` lists cmd/beam, all eleven internal packages and the
+// simnet test driver (internal/simnet/cmd/simnet).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -11,6 +12,7 @@ const GO = process.env.GO || "go";
 const EXPECTED = [
   "beam/cmd/beam",
   ...["ws", "relay", "identity", "pairing", "session", "mux", "transfer", "sysinfo", "tunnel", "ui", "simnet"].map((n) => `beam/internal/${n}`),
+  "beam/internal/simnet/cmd/simnet",
 ].sort();
 
 function go(args) {
@@ -24,10 +26,10 @@ function go(args) {
   return { code: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
-test("AC-4: go list ./... returns exactly the 12 skeleton packages", () => {
+test("AC-4: go list ./... returns exactly the 13 skeleton packages", () => {
   const r = go(["list", "./..."]);
   assert.equal(r.code, 0, r.stderr);
   const got = r.stdout.split(/\r?\n/).filter(Boolean).sort();
-  assert.equal(got.length, 12, `expected 12 packages, got ${got.length}:\n${got.join("\n")}`);
+  assert.equal(got.length, 13, `expected 13 packages, got ${got.length}:\n${got.join("\n")}`);
   assert.deepEqual(got, EXPECTED);
 });
