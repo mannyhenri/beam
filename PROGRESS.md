@@ -2,13 +2,13 @@
 
 ## Current phase
 
-Phase 1: Transport and relay. The phase 0 gate passed (`Gate: Phase 0 passed`, 6b8c0fa). `internal/ws` upgrades WebSocket requests on the server side (feature: WebSocket server).
+Phase 1: Transport and relay. The phase 0 gate passed (`Gate: Phase 0 passed`, 6b8c0fa). `internal/ws` upgrades WebSocket requests on the server side (feature: WebSocket server) and dials them through the proxy environment variables with masked client frames (feature: WebSocket client through system proxy).
 
 Phase 0: Setup. The repository skeleton is in place (feature: Zero-dependency Go project skeleton), and `scripts/build_all.sh` builds all six release binaries (feature: Six-target build script with checksums). `internal/simnet` starts and stops three fake machines (feature: Simnet fake-machine harness) and fails when one connects directly to another (feature: No-direct-connection socket check). `scripts/run_gates.sh 0` runs the phase 0 gate (feature: Per-phase gate runner); the first real phase 0 gate has not been run yet.
 
 ## Time spent
 
-About 0.5 hours (Phase 0 skeleton); about 0.25 hours (six-target build script); about 0.5 hours (simnet harness); about 0.75 hours (no-direct-connection check); about 0.5 hours (gate runner); about 0.25 hours (WebSocket server).
+About 0.5 hours (Phase 0 skeleton); about 0.25 hours (six-target build script); about 0.5 hours (simnet harness); about 0.75 hours (no-direct-connection check); about 0.5 hours (gate runner); about 0.25 hours (WebSocket server); about 0.5 hours (WebSocket client).
 
 ## Go environment
 
@@ -57,6 +57,11 @@ WebSocket server (2026-11-23):
 - `go test -race ./internal/ws`: ok (accept key, 13 refusal cases, 4 handover variants, close)
 - Acceptance AC-1, AC-2 (`node --test acceptance/ws-server/ac-N-*.test.mjs`): 2/2 pass
 
+WebSocket client (2026-11-24):
+
+- `go test -race ./internal/ws`: ok (6 new client tests, 11 cases; server tests unchanged)
+- Acceptance AC-1..AC-3 (`node --test acceptance/ws-client/ac-N-*.test.mjs`): 3/3 pass; ws-server 2/2 still pass
+
 ## Decisions that differ from the spec
 
 - Module path is `beam`: the spec names none and the repository has no remote.
@@ -89,6 +94,10 @@ WebSocket server (2026-11-23):
 
 - `ws.Upgrade(w, r) (*ws.Conn, error)` checks, in order: method GET (else 405 with `Allow: GET`); token `websocket` in Upgrade and `Upgrade` in Connection, comma lists, any case (else 400); `Sec-WebSocket-Version: 13` (else 426 with `Sec-WebSocket-Version: 13`, also when missing); `Sec-WebSocket-Key` base64 of exactly 16 bytes (else 400); a writer without `http.Hijacker` gets 500. Refusals go through the ResponseWriter and nothing is hijacked. On success it writes the 101 (Upgrade, Connection, Sec-WebSocket-Accept only) on the hijacked connection.
 - `*ws.Conn` is an `io.ReadWriteCloser` over the hijacked connection; reads go through net/http's buffered reader so bytes sent with the request are kept; `NetConn()` exposes the `net.Conn`. The caller closes it. No origin check, subprotocols or extensions; frames are the framing feature's job.
+
+- `ws.Dial(ctx, url, *ws.DialConfig) (*ws.Conn, error)` accepts ws:// and wss:// only and sends the upgrade with an `http.Client` whose Transport uses `http.ProxyFromEnvironment`: `HTTPS_PROXY` for wss:// (CONNECT tunnel), `HTTP_PROXY` for ws://, `NO_PROXY` and the lower-case forms; the OS proxy settings are not read (a later feature). net/http never proxies loopback addresses and reads the variables once per process. A plain ws:// relay behind `HTTP_PROXY` goes as a forward-proxied request, which some proxies break for Upgrade; only wss:// through CONNECT is guaranteed.
+- Dial accepts only 101 with `Upgrade: websocket`, `Connection: Upgrade` and the right `Sec-WebSocket-Accept` for its 16-byte random key; otherwise it closes and returns an error naming the status or header. `Conn.NetConn()` on a client is the TCP connection Dial opened (to the relay, or to the proxy).
+- `Conn.WriteFrame(opcode, payload)` writes one final frame with the 7/16/64-bit length form; client frames set MASK with a fresh `crypto/rand` key per frame and mask a copy (the caller's slice is untouched); server frames are never masked. Reading frames, ping/pong/close and the 1 MB cap are the framing feature's.
 
 ## Cuts taken
 
