@@ -40,6 +40,10 @@ export function makeClone(t) {
   git(dir, "config", "user.name", "Gate Test");
   git(dir, "config", "user.email", "gate-test@example.invalid");
   git(dir, "config", "commit.gpgsign", "false");
+  // Start from a single root commit of HEAD's tree: the real repo's own gate markers
+  // must not leak into the clone's history.
+  git(dir, "checkout", "--quiet", "--orphan", "gate-test");
+  git(dir, "commit", "--quiet", "-m", "test: snapshot of the repository under test");
   copyFileSync(join(ROOT, "scripts/run_gates.sh"), join(dir, "scripts/run_gates.sh"));
   chmodSync(join(dir, "scripts/run_gates.sh"), 0o755);
   if (git(dir, "status", "--porcelain", "--", "scripts/run_gates.sh") !== "") {

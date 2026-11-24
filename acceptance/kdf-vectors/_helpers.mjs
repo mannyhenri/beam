@@ -15,6 +15,8 @@ export const PBKDF2_FILE = "internal/pairing/pbkdf2_vectors_test.go";
 export const SKELETON_PACKAGES = [
   "beam/cmd/beam",
   ...["ws", "relay", "identity", "pairing", "session", "mux", "transfer", "sysinfo", "tunnel", "ui", "simnet"].map((n) => `beam/internal/${n}`),
+  // The locked simnet driver (simnet-harness / no-direct-check) is a 13th package.
+  "beam/internal/simnet/cmd/simnet",
 ].sort();
 
 const range = (a, b) => Buffer.from(Array.from({ length: b - a + 1 }, (_, i) => a + i));
