@@ -1,37 +1,43 @@
 package ws
 
 import (
-	"bufio"
 	"crypto/sha1"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 // acceptGUID is the fixed value RFC 6455 section 4.2.2 appends to the client's key.
 const acceptGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
-// Conn is a connection taken over from an HTTP server after a WebSocket
-// upgrade. Reads go through the buffer the HTTP server already filled, so bytes
-// the client sent right after its request are not lost. Frames are not handled
-// here; Conn carries raw bytes.
+// Conn is one end of a WebSocket connection: the server side from Upgrade or
+// the client side from Dial. Reads go through the buffer net/http already
+// filled, so bytes that arrived with the handshake are not lost. Read and Write
+// carry raw bytes; WriteFrame writes one frame, masked on the client side.
 type Conn struct {
-	nc net.Conn
-	br *bufio.Reader
+	nc     net.Conn
+	r      io.Reader
+	w      io.Writer
+	closer io.Closer
+	client bool
+
+	writeMu sync.Mutex
 }
 
-// Read reads raw bytes from the client.
-func (c *Conn) Read(p []byte) (int, error) { return c.br.Read(p) }
+// Read reads raw bytes from the peer.
+func (c *Conn) Read(p []byte) (int, error) { return c.r.Read(p) }
 
-// Write writes raw bytes to the client.
-func (c *Conn) Write(p []byte) (int, error) { return c.nc.Write(p) }
+// Write writes raw bytes to the peer.
+func (c *Conn) Write(p []byte) (int, error) { return c.w.Write(p) }
 
 // Close closes the connection. The caller owns it: http.Server's shutdown does
 // not reach hijacked connections.
-func (c *Conn) Close() error { return c.nc.Close() }
+func (c *Conn) Close() error { return c.closer.Close() }
 
 // NetConn returns the underlying network connection, for deadlines and addresses.
 func (c *Conn) NetConn() net.Conn { return c.nc }
@@ -81,7 +87,7 @@ func Upgrade(w http.ResponseWriter, r *http.Request) (*Conn, error) {
 		nc.Close()
 		return nil, fmt.Errorf("ws: writing 101: %w", err)
 	}
-	return &Conn{nc: nc, br: rw.Reader}, nil
+	return &Conn{nc: nc, r: rw.Reader, w: nc, closer: nc}, nil
 }
 
 // refuse writes an HTTP error and returns it as a Go error.
