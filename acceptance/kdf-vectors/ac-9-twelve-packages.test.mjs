@@ -1,10 +1,11 @@
-// AC-9: `go list ./...` still lists exactly the 12 skeleton packages, with the vector tests
+// AC-9: `go list ./...` still lists exactly the 13 skeleton packages (the 12 of the
+// skeleton plus the simnet driver internal/simnet/cmd/simnet), with the vector tests
 // as in-package test files of session and pairing.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SKELETON_PACKAGES, go, requireGoMod } from "./_helpers.mjs";
 
-test("AC-9: go list ./... returns exactly the 12 skeleton packages", () => {
+test("AC-9: go list ./... returns exactly the 13 skeleton packages", () => {
   requireGoMod();
   const r = go(["list", "./..."]);
   assert.equal(r.code, 0, r.out);
