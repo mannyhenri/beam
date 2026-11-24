@@ -8,7 +8,7 @@ Phase 0: Setup. The repository skeleton is in place (feature: Zero-dependency Go
 
 ## Time spent
 
-About 0.5 hours (Phase 0 skeleton); about 0.25 hours (six-target build script); about 0.5 hours (simnet harness); about 0.75 hours (no-direct-connection check); about 0.5 hours (gate runner); about 0.25 hours (WebSocket server); about 0.5 hours (WebSocket client).
+About 0.5 hours (Phase 0 skeleton); about 0.5 hours (HKDF and PBKDF2 vector tests); about 0.25 hours (six-target build script); about 0.5 hours (simnet harness); about 0.75 hours (no-direct-connection check); about 0.5 hours (gate runner); about 0.25 hours (WebSocket server); about 0.5 hours (WebSocket client).
 
 ## Go environment
 
@@ -31,6 +31,11 @@ Phase 0 skeleton (2026-11-22):
 - `CGO_ENABLED=0 go build ./...`: ok
 - `go vet ./...`: ok, no output
 - Acceptance tests AC-1..AC-10 (`node --test acceptance/go-project-skeleton/ac-N-*.test.mjs`): 10/10 pass
+
+HKDF and PBKDF2 vector tests (2026-11-23):
+
+- `go test ./internal/session -run HKDF -v`: ok, `TestHKDFSHA256Vectors` passes RFC 5869 A.1, A.2 and A.3 (PRK from `hkdf.Extract`, OKM from `hkdf.Key`, `hkdf.Expand(PRK)` equals OKM)
+- `go test ./internal/pairing -run PBKDF2 -v`: ok, `TestPBKDF2SHA256Vectors` passes both RFC 7914 section 11 vectors (c=1 and c=80000)
 
 Six-target build script (2026-11-23):
 
@@ -71,6 +76,7 @@ WebSocket client (2026-11-24):
 - `beam` with an unrecognised argument prints the usage to stderr and exits 2. The spec only defines the no-argument case; exiting 0 for an unknown command would hide mistakes.
 - The toolchain was not present in the sandbox; Go 1.27.4 was installed with Homebrew, and go.mod pins `go 1.27.4`, so older toolchains will refuse to build (or try to download 1.27.4 when `GOTOOLCHAIN=auto`).
 - The `internal/*/doc.go` package comments describe each package's intended role; the packages themselves are empty until their features land.
+- The HKDF and PBKDF2 fallbacks were not written: go1.27.4 provides crypto/hkdf and crypto/pbkdf2, and both pass the RFC 5869 and RFC 7914 vectors in `internal/session/hkdf_vectors_test.go` and `internal/pairing/pbkdf2_vectors_test.go`.
 - `scripts/build_all.sh` writes to `dist/` at the repository root (git-ignored): `beam-<goos>-<goarch>` for linux and darwin, `beam-<goos>-<goarch>.exe` for windows, on amd64 and arm64, plus `dist/checksums.txt` in `sha256sum` format with bare filenames sorted by name. The spec names no output location or file names.
 - Binaries are built with `-trimpath -ldflags='-s -w'` (stripped symbols and paths) to stay well under the 15 MB target; the script fails if any binary reaches 15,728,640 bytes.
 - `sha256sum` is used when present, otherwise `shasum -a 256` (stock macOS has no `sha256sum`); the script stops before building if neither exists.
